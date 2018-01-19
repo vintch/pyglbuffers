@@ -23,16 +23,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-from pyglet.gl import (glGenBuffers, glBindBuffer, GLuint, glBufferData,
+from OpenGL.GLES2 import (glGenBuffers, glBindBuffer, GLuint, glBufferData,
   glIsBuffer, glDeleteBuffers, GLfloat, GLdouble, GLbyte, GLubyte, GLint,
-  GLshort, GLushort, glGetBufferParameteriv, glGetBufferSubData, glBufferSubData,
-  glMapBuffer, glUnmapBuffer, glGetBufferPointerv)
+  GLshort, GLushort, glGetBufferParameteriv, glBufferSubData)
 
-from pyglet.gl import (GL_ARRAY_BUFFER, GL_ELEMENT_ARRAY_BUFFER, GL_PIXEL_PACK_BUFFER,
-  GL_PIXEL_UNPACK_BUFFER, GL_STATIC_COPY, GL_STATIC_DRAW, GL_STATIC_READ,
-  GL_DYNAMIC_COPY, GL_DYNAMIC_DRAW, GL_DYNAMIC_READ, GL_STREAM_COPY, GL_STREAM_DRAW,
-  GL_STREAM_READ, GL_TRUE, GL_BUFFER_SIZE, GL_READ_ONLY, GL_WRITE_ONLY, GL_READ_WRITE,
-  GL_BUFFER_MAPPED, GL_BUFFER_ACCESS, GL_BUFFER_USAGE, GL_BUFFER_MAP_POINTER, 
+from OpenGL.GLES2 import (GL_ARRAY_BUFFER, GL_ELEMENT_ARRAY_BUFFER,
+  GL_STATIC_DRAW, GL_DYNAMIC_DRAW, GL_TRUE, GL_BUFFER_SIZE, GL_BUFFER_USAGE,
   GL_FLOAT, GL_DOUBLE, GL_BYTE, GL_UNSIGNED_BYTE, GL_INT, GL_UNSIGNED_INT,
   GL_SHORT, GL_UNSIGNED_SHORT)
 
@@ -58,8 +54,6 @@ BUFFER_FORMAT_TYPES_MAP = { 'f': (GLfloat, GL_FLOAT), 'd': (GLdouble, GL_DOUBLE)
                             's': (GLshort, GL_SHORT), 'S': (GLushort, GL_UNSIGNED_SHORT)}
                             
 pyvars = re.compile('[_a-zA-Z][_\w]+')
-
-map_info = namedtuple('MappingInformation', ['access', 'target', 'ptr', 'size'])
 
 def ptr_array(arr):
     " Cast an array in a pointer "
@@ -310,46 +304,8 @@ class BufferFormat(object):
             raise ValueError(msg.format(format_str, subdata))
         
         return buffer
-        
-        
-    def unpack(self, data):
-        """
-            Unpack a sequence of ctypes struct in a named tuple. The packed data must 
-            have been packed by the formatter.
-            
-            Argument:
-                data: sequence of ctypes struct. 
-        """
-        if len(data) > 0 and not isinstance(data[0], self.struct):
-            raise ValueError("Impossible to unpack data that was not packed by the formatter")
-        
-        data_dict = {}
-        unpack_data = []
-        for d in data:
-            for t in self.tokens:
-                data_dict[t.name] = tuple(getattr(d, t.name))
-            
-            unpack_data.append(self.item(**data_dict))
-        
-        return tuple(unpack_data)
-        
-    def unpack_single(self, data):
-        """
-            Unpack a ctypes struct in a named tuple. The packed data must 
-            have been packed by the formatter.
-            
-            Argument:
-                data: ctypes struct
-        """
-        if not isinstance(data, self.struct):
-            raise ValueError("Impossible to unpack data that was not packed by the formatter")
-            
-        data_dict = {}
-        for t in self.tokens:
-            data_dict[t.name] = tuple(getattr(data, t.name))
-        
-        return self.item(**data_dict)
-            
+
+
 class Buffer(object):
     """
         Wrapper over an opengl buffer.
@@ -362,11 +318,9 @@ class Buffer(object):
     """
 
     __slots__ = ['bid', 'format', 'target', '_usage', 'data', 'owned',
-                 '__weakref__', 'mapinfo']    
+                 '__weakref__']
     
     size = GetBufferObject(GL_BUFFER_SIZE)    
-    mapped = GetBufferObject(GL_BUFFER_MAPPED)
-    access = GetBufferObject(GL_BUFFER_ACCESS)
     usage = GetBufferObject(GL_BUFFER_USAGE)
     
     def __init__(self, buffer_id, format, usage=GL_DYNAMIC_DRAW, owned=False):
@@ -375,7 +329,6 @@ class Buffer(object):
         self._usage = usage
         self.format = BufferFormat.new(format)
         self.target = None
-        self.mapinfo = None
 
     @staticmethod
     def __alloc(cls, target, format, usage): 
@@ -387,8 +340,7 @@ class Buffer(object):
         buf._usage = usage
         buf.format = BufferFormat.new(format)
         buf.target = target
-        buf.mapinfo = None
-        
+
         return buf
         
     @classmethod
@@ -400,23 +352,7 @@ class Buffer(object):
     def element(cls, format, usage=GL_STATIC_DRAW):
        " Generate a buffer that hold vertex indices (GL_ELEMENT_ARRAY_BUFFER) "
        return Buffer.__alloc(cls, GL_ELEMENT_ARRAY_BUFFER, format, usage) 
-       
-    @classmethod
-    def pixel_pack(cls, format, usage=GL_STATIC_DRAW):
-       """
-           Generate a buffer that is used as the destination for OpenGL commands
-           that read data from image objects  (GL_PIXEL_PACK_BUFFER) 
-       """
-       return Buffer.__alloc(cls, GL_PIXEL_PACK_BUFFER, format, usage)       
-       
-    @classmethod
-    def pixel_unpack(cls, format, usage=GL_STATIC_DRAW):
-       """
-           Generate a buffer that it is used as the source of data for commands 
-           like glTexImage2D() (GL_PIXEL_UNPACK_BUFFER)
-       """
-       return Buffer.__alloc(cls, GL_PIXEL_UNPACK_BUFFER, format, usage)
-    
+
     def valid(self):
         " Return True if the underlying opengl buffer is valid or False if it is not "
         return glIsBuffer(self.bid) == GL_TRUE
@@ -434,41 +370,7 @@ class Buffer(object):
             
         target = target if target is not None else self.target
         glBindBuffer(target, self.bid)
-        
-    def map(self, access=GL_READ_WRITE, target=None):
-        """
-        Map the buffer locally. This increase the reading/writing speed.
-        If the buffer was already mapped, a BufferError will be raised.
-        
-        Arguments:
-            access: Buffer access. Can be GL_READ_WRITE, GL_READ_ONLY, GL_WRITE_ONLY. Default to GL_READ_WRITE
-            target: Target to bind the buffer to. If None, use the buffer default target. Default to None.
-        """
-        if self.mapped == GL_TRUE:
-            raise BufferError("Buffer is already mapped")
-        
-        target = target if target is not None else self.target
-        glBindBuffer(target, self.bid)
-        glMapBuffer(target, access)
-        
-        ptr_type = POINTER(self.format.struct)
-        ptr = c_void_p()
-        glGetBufferPointerv(target, GL_BUFFER_MAP_POINTER, byref(ptr))        
-        
-        self.mapinfo = map_info(target=target, access=access, ptr=cast(ptr,ptr_type),
-                                size=self.size//sizeof(self.format.struct))
-        
-    def unmap(self):
-        """
-            Unmap the buffer. Will raise a BufferError if the buffer is not mapped.
-        """
-        
-        if self.mapped != GL_TRUE:
-            raise BufferError("Buffer is not mapped")
-            
-        glUnmapBuffer(self.mapinfo.target)
-        self.mapinfo = None
-        
+
     def init(self, data, target=None):
         """
             Fill the buffer data with "data". Data must be formatted using the
@@ -500,79 +402,10 @@ class Buffer(object):
             
         self.bind()
         glBufferData(target, sizeof(self.format.struct)*length, c_void_p(0), self._usage)
-    
-    def __getitem_mapped(self, buffer, key):
-        " Called by __getitem__ if the buffer content is mapped locally "
-        info = buffer.mapinfo
-        if info.access == GL_WRITE_ONLY:
-            raise BufferError("Impossible to read to a buffer mapped with GL_WRITE_ONLY")
-            
-        blen = info.size
-        
-        if isinstance(key, int):
-            key = eval_index(key, blen)
-            return buffer.format.unpack_single(info.ptr[key])
-        else: 
-            start, stop, step = eval_slice(key, blen)
-            return buffer.format.unpack(info.ptr[start:stop:step])
-        
-    def __setitem_mapped(self, buffer, key, value):
-        " Called by __setitem__ if the buffer content is mapped locally "
-        info = buffer.mapinfo        
-        if buffer.mapinfo.access == GL_READ_ONLY:
-            raise BufferError("Impossible to write to a buffer mapped with GL_READ_ONLY")
-            
-        blen = info.size
-        
-        if isinstance(key, int):
-            key = eval_index(key, blen)
-            info.ptr[key] = buffer.format.pack((value,))[0]
-        else: 
-            start, stop, step = eval_slice(key, blen)
-            if step == -1:
-                value = list(reversed(value))
-                step = 1
-                
-            # Ctypes pointers do not support slicing assignment
-            for count, i in enumerate(range(start, stop, step)):
-                info.ptr[i] = buffer.format.pack((value[count],))[0]
-    
-    def __getitem__(self, key):
-        if not isinstance(key, int) and not isinstance(key, slice):
-            raise KeyError('Key must be an integer or a slice, got {}'.format(type(key).__qualname__))
 
-        if self.mapinfo is not None:
-            return self.__getitem_mapped(self, key)
-
-        self.bind()            
-        blen = len(self) 
-       
-        if isinstance(key, int):
-            key = eval_index(key, blen)
-            
-            buf = self.format.struct()
-            buf_size = sizeof(buf)
-            glGetBufferSubData(self.target, key*buf_size, buf_size, byref(buf))
-            
-            return self.format.unpack_single(buf)
-        
-        else:
-            start, stop, step = eval_slice(key, blen)
-            buf_len = stop-start
-            buf = (self.format.struct*buf_len)()
-            buf_size = sizeof(buf)
-            buf_offset = start * sizeof(self.format.struct)
-            
-            glGetBufferSubData(self.target, buf_offset, buf_size, byref(buf))
-            
-            return self.format.unpack(buf[::step])
-            
     def __setitem__(self, key, value):
         if not isinstance(key, int) and not isinstance(key, slice):
             raise KeyError('Key must be an integer or a slice, got {}'.format(type(key).__qualname__))
-
-        if self.mapinfo is not None:
-            return self.__setitem_mapped(self, key, value)
 
         self.bind()
         blen = len(self)            
@@ -602,17 +435,7 @@ class Buffer(object):
             
     def __repr__(self):
         return repr(self[::])
-        
-    def __enter__(self):
-        self.map()
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        if exc_type is None:
-            self.unmap()
-            return True
-        
-        return False
-        
     def __bool__(self):
         return self.valid() 
         
@@ -621,9 +444,6 @@ class Buffer(object):
         
     def __del__(self):
         if getattr(self, 'owned', False) and self.valid():
-            if self.mapped == GL_TRUE:
-                self.unmap()
-            
             glDeleteBuffers(1, byref(self.bid))
             
 
