@@ -1,7 +1,7 @@
 PyGLbuffers
 ===================
 
-**Fork reason & branch purpose:** porting PyGLbuffers from pyglet to the **OpenGL.GLES2** platform.
+**Fork reason & branch purpose:** porting PyGLbuffers from pyglet to the **GLES2 native** platform.
 
 PyGLbuffers aims to completely wraps the opengl2.1 buffer api in a python module. 
 PyGLbuffers provides a pythonic OOP api that hides the lower level (ctypes) calls. 

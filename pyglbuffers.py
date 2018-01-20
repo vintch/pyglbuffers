@@ -23,13 +23,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-from OpenGL.GLES2 import (glGenBuffers, glBindBuffer, GLuint, glBufferData,
-  glIsBuffer, glDeleteBuffers, GLfloat, GLdouble, GLbyte, GLubyte, GLint,
+from rpi_gles2_native import (glGenBuffers, glBindBuffer, GLuint, glBufferData,
+  glIsBuffer, glDeleteBuffers, GLfloat, GLbyte, GLubyte, GLint,
   GLshort, GLushort, glGetBufferParameteriv, glBufferSubData)
 
-from OpenGL.GLES2 import (GL_ARRAY_BUFFER, GL_ELEMENT_ARRAY_BUFFER,
+from rpi_gles2_native import (GL_ARRAY_BUFFER, GL_ELEMENT_ARRAY_BUFFER,
   GL_STATIC_DRAW, GL_DYNAMIC_DRAW, GL_TRUE, GL_BUFFER_SIZE, GL_BUFFER_USAGE,
-  GL_FLOAT, GL_DOUBLE, GL_BYTE, GL_UNSIGNED_BYTE, GL_INT, GL_UNSIGNED_INT,
+  GL_FLOAT, GL_BYTE, GL_UNSIGNED_BYTE, GL_INT, GL_UNSIGNED_INT,
   GL_SHORT, GL_UNSIGNED_SHORT)
 
 try:
@@ -48,7 +48,7 @@ from sys import modules
 #Loaded extensions name are added in here
 LOADED_EXTENSIONS = []
 
-BUFFER_FORMAT_TYPES_MAP = { 'f': (GLfloat, GL_FLOAT), 'd': (GLdouble, GL_DOUBLE),
+BUFFER_FORMAT_TYPES_MAP = { 'f': (GLfloat, GL_FLOAT),
                             'b': (GLbyte, GL_BYTE), 'B': (GLubyte, GL_UNSIGNED_BYTE),
                             'i': (GLint, GL_INT), 'I': (GLuint, GL_UNSIGNED_INT),
                             's': (GLshort, GL_SHORT), 'S': (GLushort, GL_UNSIGNED_SHORT)}

@@ -28,4 +28,5 @@ setup(name='pyglbuffers',
       url='https://github.com/gabdube/pyglbuffers',
       download_url='https://github.com/gabdube/pyglbuffers',
       py_modules=['pyglbuffers']+extensions,
+      install_requires=['rpi_gles2_native']
      )
