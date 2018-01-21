@@ -25,12 +25,11 @@ SOFTWARE.
 
 from rpi_gles2_native import (glGenBuffers, glBindBuffer, GLuint, glBufferData,
   glIsBuffer, glDeleteBuffers, GLfloat, GLbyte, GLubyte, GLint,
-  GLshort, GLushort, glGetBufferParameteriv, glBufferSubData)
+  GLshort, GLushort, glBufferSubData)
 
 from rpi_gles2_native import (GL_ARRAY_BUFFER, GL_ELEMENT_ARRAY_BUFFER,
-  GL_STATIC_DRAW, GL_DYNAMIC_DRAW, GL_TRUE, GL_BUFFER_SIZE, GL_BUFFER_USAGE,
-  GL_FLOAT, GL_BYTE, GL_UNSIGNED_BYTE, GL_INT, GL_UNSIGNED_INT,
-  GL_SHORT, GL_UNSIGNED_SHORT)
+  GL_STATIC_DRAW, GL_DYNAMIC_DRAW, GL_TRUE, GL_FLOAT, GL_BYTE, GL_UNSIGNED_BYTE,
+  GL_INT, GL_UNSIGNED_INT, GL_SHORT, GL_UNSIGNED_SHORT)
 
 try:
     import pyglbuffers_extensions
@@ -106,25 +105,6 @@ class BufferFormatError(Exception):
 class PyGlBuffersExtensionError(Exception):
     def __init__(self, *args):
         super().__init__(*args)
-
-class GLGetObject(object):
-    """
-        Descriptor that wraps glGet* function
-    """
-    __slots__ = ['pname']
-    buffer = GLint(0)
-    
-    def __init__(self, pname): self.pname = pname
-    def __set__(self): raise AttributeError('Attribute is not writable')
-    def __delete__(self): raise AttributeError('Attribute cannot be deleted')
-
-class GetBufferObject(GLGetObject):
-    __slots__ = []
-
-    def __get__(self, instance, cls):
-        instance.bind()
-        glGetBufferParameteriv(instance.target, self.pname, byref(self.buffer))
-        return self.buffer.value
 
 class BufferFormat(object):
     """
@@ -317,16 +297,19 @@ class Buffer(object):
             owned: If the object own the underlying data
     """
 
-    __slots__ = ['bid', 'format', 'target', '_usage', 'data', 'owned',
+    __slots__ = ['bid', 'format', 'target', 'usage', 'size', 'data', 'owned',
                  '__weakref__']
-    
-    size = GetBufferObject(GL_BUFFER_SIZE)    
-    usage = GetBufferObject(GL_BUFFER_USAGE)
-    
-    def __init__(self, buffer_id, format, usage=GL_DYNAMIC_DRAW, owned=False):
+
+    # It seems there is a bug in the libbrcmGLESv2 (Raspberry Pi's version from Broadcom):
+    # after one single call of 'GetBufferParameteriv()' buffer becomes invalidated until delete.
+    # Workaround quite simple: just do not use this function at all.
+    #size = GetBufferObject(GL_BUFFER_SIZE)
+
+    def __init__(self, buffer_id, size, format, usage=GL_DYNAMIC_DRAW, owned=False):
         self.bid = GLuint(getattr(buffer_id, 'value', buffer_id))
         self.owned = owned
-        self._usage = usage
+        self.usage = usage
+        self.size = size
         self.format = BufferFormat.new(format)
         self.target = None
 
@@ -337,10 +320,10 @@ class Buffer(object):
         buf.bid = GLuint()
         glGenBuffers(1, byref(buf.bid))
         glBindBuffer(target, buf.bid)
-        buf._usage = usage
+        buf.usage = usage
         buf.format = BufferFormat.new(format)
         buf.target = target
-
+        buf.size = 0
         return buf
         
     @classmethod
@@ -365,10 +348,9 @@ class Buffer(object):
                 target: Default to None. One of the GL target (such as GL_ARRAY_BUFFER)
                         If None, use the default buffer target.
         """
-        if self.target is None:
-            raise ValueError("Buffer target was not defined")
-            
-        target = target if target is not None else self.target
+        if target is None:
+            target = self.target
+
         glBindBuffer(target, self.bid)
 
     def init(self, data, target=None):
@@ -388,7 +370,8 @@ class Buffer(object):
             
         self.bind(target)
         cdata = self.format.pack(data)
-        glBufferData(target, sizeof(cdata), ptr_array(cdata), self._usage)
+        self.size = sizeof(cdata)
+        glBufferData(target, self.size, ptr_array(cdata), self.usage)
         
     def reserve(self, length, target=None):
         """
@@ -400,8 +383,9 @@ class Buffer(object):
         if target is None:
             target = self.target
             
-        self.bind()
-        glBufferData(target, sizeof(self.format.struct)*length, c_void_p(0), self._usage)
+        self.bind(target)
+        self.size = sizeof(self.format.struct)*length
+        glBufferData(target, self.size, c_void_p(0), self.usage)
 
     def __setitem__(self, key, value):
         if not isinstance(key, int) and not isinstance(key, slice):
@@ -415,7 +399,6 @@ class Buffer(object):
             buf = self.format.pack((value,))
             buf_size = sizeof(buf)
             glBufferSubData(self.target, key*buf_size, buf_size, byref(buf))
-            
         else:
             if key.step is not None and key.step not in (1, -1):
                 raise NotImplementedError('Unmapped buffer write do not support steps different than 1.')
@@ -429,12 +412,8 @@ class Buffer(object):
             buf = self.format.pack(value)
             buf_size = sizeof(self.format.struct) * (stop-start)
             buf_offset = start * sizeof(self.format.struct)
-                
             
             glBufferSubData(self.target, buf_offset, buf_size, byref(buf))
-            
-    def __repr__(self):
-        return repr(self[::])
 
     def __bool__(self):
         return self.valid() 
